@@ -44,14 +44,19 @@ class BackgroundRunner:
         lastEtag = None
         run_feed = True
         while run_feed:
-            print(sources)
             for source in sources:
                 if 'modified' in sources[source]:
                     d = feedparser.parse(source, modified=sources[source]['modified'])
-                    print(d.status)
+                    if d.status == 200:
+                        sources[source]['modified'] = d.updated
+                    else:
+                        print(d.status)
                 elif 'etag' in sources[source]:
                     d = feedparser.parse(source, etag=sources[source]['etag'])
-                    print(d.status)
+                    if d.status == 200:
+                        sources[source]['etag'] = d.etag
+                    else:
+                        print(d.status)
                 else:
                     d = feedparser.parse(source)
                     if d.entries[0].link == sources[source]['last_entry_link']:
@@ -71,6 +76,9 @@ class BackgroundRunner:
 runner = BackgroundRunner()
 
 
+# function runs on server startup
+# init_sources function fetches sources and sets their modified/etags
+# run_main function checks if each source rss feed has updated
 @app.on_event("startup")
 async def startup_event():
     runner.init_sources()
