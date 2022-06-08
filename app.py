@@ -16,20 +16,55 @@ app = FastAPI()
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
 db = client.college
 
+sources = {
+    'https://decrypt.co/feed': '',
+    'https://blockworks.co/feed/': '',
+    'https://cryptopotato.com/feed': '',
+    'https://cryptobriefing.com/feed/': '',
+    'https://dailyhodl.com/feed/': '',
+    'https://cointelegraph.com/rss': ''
+}
+
 class BackgroundRunner:
     def __init__(self):
         self.value = 0
 
+    def init_sources(self):
+        for source in sources:
+            source_feed = feedparser.parse(source)
+            if 'updated' in source_feed.keys():
+                sources[source] = {'modified': source_feed.updated}
+            elif 'etag' in source_feed.keys():
+                sources[source] = {'etag': source_feed.etag}
+            else:
+                sources[source] = {'last_entry_link': source_feed.entries[0].link}
+
+
     async def run_main(self):
         lastEtag = None
-        while True:
-            d = feedparser.parse('https://decrypt.co/feed', etag = lastEtag)
-            lastEtag = d.etag
+        run_feed = True
+        while run_feed:
+            print(sources)
+            for source in sources:
+                if 'modified' in sources[source]:
+                    d = feedparser.parse(source, modified=sources[source]['modified'])
+                    print(d.status)
+                elif 'etag' in sources[source]:
+                    d = feedparser.parse(source, etag=sources[source]['etag'])
+                    print(d.status)
+                else:
+                    d = feedparser.parse(source)
+                    if d.entries[0].link == sources[source]['last_entry_link']:
+                        print('no change (fake 304)')
+                    else:
+                        print('change (fake 200)')
+            # d = feedparser.parse('https://decrypt.co/feed', etag = lastEtag)
+            # lastEtag = d.etag
             # entries = []
             # for entry in d.entries:
             #     entries.append(entry.title)
             # print(entries)
-            print(d.status)
+            # print(d.status)
             await asyncio.sleep(60)
             self.value += 1
 
@@ -38,6 +73,7 @@ runner = BackgroundRunner()
 
 @app.on_event("startup")
 async def startup_event():
+    runner.init_sources()
     asyncio.create_task(runner.run_main())
 
 
@@ -74,6 +110,22 @@ class StudentModel(BaseModel):
                 "email": "jdoe@example.com",
                 "course": "Experiments, Science, and Fashion in Nanophotonics",
                 "gpa": "3.0",
+            }
+        }
+
+class EntryModel(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    title: str = Field(...)
+    link: str = Field(...)
+
+    class Config:
+        allow_population_by_field_name = True
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "title": "News",
+                "link": "news.com/story"
             }
         }
 
