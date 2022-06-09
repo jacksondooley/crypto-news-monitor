@@ -10,6 +10,7 @@ import schedule
 import time
 import asyncio
 import feedparser
+import pandas as pd
 
 feedparser.USER_AGENT = 'Mozilla/5.0`'
 
@@ -30,38 +31,42 @@ class BackgroundRunner:
     def __init__(self):
         self.value = 0
         self.sources = {}
-
-    # def init_sources(self):
-    #     for source in sources:
-    #         source_feed = feedparser.parse(source)
-    #         if 'updated' in source_feed.keys():
-    #             sources[source] = {'modified': source_feed.updated}
-    #         elif 'etag' in source_feed.keys():
-    #             sources[source] = {'etag': source_feed.etag}
-    #         else:
-    #             sources[source] = {'last_entry_link': source_feed.entries[0].link}
+        self.entries = []
+        self.pattern = ""
     
     def set_sources(self, sources):
         new_sources = {}
         for source in sources:
             url = source['url']
             source_feed = feedparser.parse(url)
+            self.append_entries(source_feed)
             if 'updated' in source_feed.keys():
                 new_sources[url] = {'modified': source_feed.updated}
-                print(url)
-                print(source_feed.status)
             elif 'etag' in source_feed.keys():
                 new_sources[url] = {'etag': source_feed.etag}
             else:
                 new_sources[url] = {'last_entry_link': source_feed.entries[0].link}
-        print(new_sources)
         self.sources = new_sources
+
+    def append_entries(self, feed):
+        for entry in feed.entries:
+            new_entry = {}
+            new_entry["title"] = entry.title
+            new_entry["link"] = entry.link
+            new_entry["publisher"] = feed.feed.title
+            new_entry["published"] = entry.published
+            new_entry["tags"] = []
+            for tag in entry.tags:
+                new_entry["tags"].append(tag.term) 
+            self.entries.append(new_entry)
+
 
 
     async def run_main(self):
         scan_feeds = True
+        df = pd.DataFrame(self.entries)
+        print(df)
         while scan_feeds:
-            print(self.sources)
             for source in self.sources:
                 if 'modified' in self.sources[source]:
                     d = feedparser.parse(source, modified=self.sources[source]['modified'])
@@ -82,6 +87,12 @@ class BackgroundRunner:
                     else:
                         print('change (fake 200)')
             await asyncio.sleep(60)
+
+    # def check_entries_for_patterns(self):
+    #     for entry in self.entries:
+    #         if self.pattern == ""
+
+
 
 runner = BackgroundRunner()
 
@@ -125,6 +136,20 @@ class SourceModel(BaseModel):
             }
         }
 
+class UpdateSourceModel(BaseModel):
+    name: Optional[str]
+    url: Optional[HttpUrl]
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "name": "Coin Telegraph",
+                "url": "https://cointelegraph.com/rss"
+            }
+        }
+
+# class PatternModel(BaseModel):
 
 class StudentModel(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
@@ -150,6 +175,9 @@ class EntryModel(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
     title: str = Field(...)
     link: str = Field(...)
+    published: str = Field(...)
+    tags: str = Field(...)
+    source: str = Field(...)
 
     class Config:
         allow_population_by_field_name = True
@@ -162,18 +190,6 @@ class EntryModel(BaseModel):
             }
         }
 
-class UpdateSourceModel(BaseModel):
-    name: Optional[str]
-    url: Optional[HttpUrl]
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "name": "Coin Telegraph",
-                "url": "https://cointelegraph.com/rss"
-            }
-        }
 
 
 class UpdateStudentModel(BaseModel):
@@ -195,11 +211,15 @@ class UpdateStudentModel(BaseModel):
         }
 
 @app.post("/sources", response_description="Add new source", response_model=SourceModel)
-async def create_source(source: SourceModel = Body(...)):
+async def add_source(source: SourceModel = Body(...)):
     source = jsonable_encoder(source)
-    new_source = await db["sources"].insert_one(source)
-    created_source = await db["source"].find_one({"_id": new_source.inserted_id})
-    return JSONResponse(status_code=status.HTTP_201_CREATED, content=created_source)
+    feed = feedparser.parse(source["url"])
+    if feed.version[0:3] == 'rss':
+        new_source = await db["sources"].insert_one(source)
+        created_source = await db["source"].find_one({"_id": new_source.inserted_id})
+        return JSONResponse(status_code=status.HTTP_201_CREATED, content=created_source)
+    raise HTTPException(status_code=400, detail=f"Source is not valid rss feed")
+    
 
 @app.get("/sources", response_description="List all sources", response_model=List[SourceModel])
 async def list_sources():
