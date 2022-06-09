@@ -53,7 +53,7 @@ matches = []
 
 for entry in entries:
     # if entry.keys() content:
-    print(entry.status)
+    print(entry.headers)
     # req = Request(entry.link, headers={'User-Agent': 'Mozilla/5.0`'})
     # page = urlopen(req).read()
 

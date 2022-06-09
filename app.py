@@ -11,6 +11,7 @@ import time
 import asyncio
 import feedparser
 
+feedparser.USER_AGENT = 'Mozilla/5.0`'
 
 app = FastAPI()
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
@@ -47,6 +48,8 @@ class BackgroundRunner:
             source_feed = feedparser.parse(url)
             if 'updated' in source_feed.keys():
                 new_sources[url] = {'modified': source_feed.updated}
+                print(url)
+                print(source_feed.status)
             elif 'etag' in source_feed.keys():
                 new_sources[url] = {'etag': source_feed.etag}
             else:
