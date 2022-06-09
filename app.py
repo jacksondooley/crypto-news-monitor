@@ -162,6 +162,19 @@ class EntryModel(BaseModel):
             }
         }
 
+class UpdateSourceModel(BaseModel):
+    name: Optional[str]
+    url: Optional[HttpUrl]
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "name": "Coin Telegraph",
+                "url": "https://cointelegraph.com/rss"
+            }
+        }
+
 
 class UpdateStudentModel(BaseModel):
     name: Optional[str]
@@ -193,32 +206,49 @@ async def list_sources():
     sources = await db["sources"].find().to_list(100)
     return sources
 
+@app.get("/sources/{id}", response_description="Get a single source", response_model=SourceModel)
+async def show_source(id: str):
+    if (source := await db["sources"].find_one({"_id": id})) is not None:
+        return source
+    
+    raise HTTPException(status_code=404, detail=f"Source {id} not found")
 
-@app.post("/", response_description="Add new student", response_model=StudentModel)
-async def create_student(student: StudentModel = Body(...)):
-    student = jsonable_encoder(student)
-    new_student = await db["students"].insert_one(student)
-    created_student = await db["students"].find_one({"_id": new_student.inserted_id})
-    return JSONResponse(status_code=status.HTTP_201_CREATED, content=created_student)
+@app.put("/sources/{id}", response_description="Update a source", response_model=SourceModel)
+async def update_souce(id: str, source: UpdateSourceModel = Body(...)):
+    source = {k: v for k, v in source.dict().items() if v is not None}
 
+    if len(source) >= 1:
+        update_result = await db["sources"].update_one({"_id": id}, {"$set": source})
 
-@app.get(
-    "/", response_description="List all students", response_model=List[StudentModel]
-)
-async def list_students():
-    students = await db["students"].find().to_list(1000)
-    return students
+        
+        if update_result.modified_count == 1:
+            if (
+                updated_source := await db["sources"].find_one({"_id": id})
+            ) is not None:
+                return updated_source
+    
+    if (existing_source := await db["sources"].find_one({"_id": id})) is not None:
+        return existing_source
 
+    raise HTTPException(status_code=404, detail=f"source {id} not found")
 
-@app.get(
-    "/{id}", response_description="Get a single student", response_model=StudentModel
-)
-async def show_student(id: str):
-    if (student := await db["students"].find_one({"_id": id})) is not None:
-        return student
+@app.delete("/sources/{id}", response_description="Delete a source")
+async def delete_source(id: str):
+    delete_result = await db["source"].delete_one({"_id": id})
+
+    if delete_result.deleted_count == 1:
+        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
+
+    raise HTTPException(status_code=404, detail=f"Source {id} not found")
+
+@app.delete("/{id}", response_description="Delete a student")
+async def delete_student(id: str):
+    delete_result = await db["students"].delete_one({"_id": id})
+
+    if delete_result.deleted_count == 1:
+        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
 
     raise HTTPException(status_code=404, detail=f"Student {id} not found")
-
 
 @app.put("/{id}", response_description="Update a student", response_model=StudentModel)
 async def update_student(id: str, student: UpdateStudentModel = Body(...)):
@@ -238,14 +268,11 @@ async def update_student(id: str, student: UpdateStudentModel = Body(...)):
 
     raise HTTPException(status_code=404, detail=f"Student {id} not found")
 
-
-@app.delete("/{id}", response_description="Delete a student")
-async def delete_student(id: str):
-    delete_result = await db["students"].delete_one({"_id": id})
-
-    if delete_result.deleted_count == 1:
-        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
+@app.get(
+    "/{id}", response_description="Get a single student", response_model=StudentModel
+)
+async def show_student(id: str):
+    if (student := await db["students"].find_one({"_id": id})) is not None:
+        return student
 
     raise HTTPException(status_code=404, detail=f"Student {id} not found")
-
-
