@@ -2,7 +2,7 @@ import os
 from fastapi import FastAPI, Body, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, HttpUrl
 from bson import ObjectId
 from typing import Optional, List
 import motor.motor_asyncio
@@ -14,7 +14,7 @@ import feedparser
 
 app = FastAPI()
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
-db = client.college
+db = client.feed_reader
 
 sources = {
     'https://decrypt.co/feed': '',
@@ -28,50 +28,57 @@ sources = {
 class BackgroundRunner:
     def __init__(self):
         self.value = 0
+        self.sources = {}
 
-    def init_sources(self):
+    # def init_sources(self):
+    #     for source in sources:
+    #         source_feed = feedparser.parse(source)
+    #         if 'updated' in source_feed.keys():
+    #             sources[source] = {'modified': source_feed.updated}
+    #         elif 'etag' in source_feed.keys():
+    #             sources[source] = {'etag': source_feed.etag}
+    #         else:
+    #             sources[source] = {'last_entry_link': source_feed.entries[0].link}
+    
+    def set_sources(self, sources):
+        new_sources = {}
         for source in sources:
-            source_feed = feedparser.parse(source)
+            url = source['url']
+            source_feed = feedparser.parse(url)
             if 'updated' in source_feed.keys():
-                sources[source] = {'modified': source_feed.updated}
+                new_sources[url] = {'modified': source_feed.updated}
             elif 'etag' in source_feed.keys():
-                sources[source] = {'etag': source_feed.etag}
+                new_sources[url] = {'etag': source_feed.etag}
             else:
-                sources[source] = {'last_entry_link': source_feed.entries[0].link}
+                new_sources[url] = {'last_entry_link': source_feed.entries[0].link}
+        print(new_sources)
+        self.sources = new_sources
 
 
     async def run_main(self):
-        lastEtag = None
-        run_feed = True
-        while run_feed:
-            for source in sources:
-                if 'modified' in sources[source]:
-                    d = feedparser.parse(source, modified=sources[source]['modified'])
+        scan_feeds = True
+        while scan_feeds:
+            print(self.sources)
+            for source in self.sources:
+                if 'modified' in self.sources[source]:
+                    d = feedparser.parse(source, modified=self.sources[source]['modified'])
                     if d.status == 200:
-                        sources[source]['modified'] = d.updated
+                        self.sources[source]['modified'] = d.updated
                     else:
                         print(d.status)
-                elif 'etag' in sources[source]:
-                    d = feedparser.parse(source, etag=sources[source]['etag'])
+                elif 'etag' in self.sources[source]:
+                    d = feedparser.parse(source, etag=self.sources[source]['etag'])
                     if d.status == 200:
-                        sources[source]['etag'] = d.etag
+                        self.sources[source]['etag'] = d.etag
                     else:
                         print(d.status)
                 else:
                     d = feedparser.parse(source)
-                    if d.entries[0].link == sources[source]['last_entry_link']:
+                    if d.entries[0].link == self.sources[source]['last_entry_link']:
                         print('no change (fake 304)')
                     else:
                         print('change (fake 200)')
-            # d = feedparser.parse('https://decrypt.co/feed', etag = lastEtag)
-            # lastEtag = d.etag
-            # entries = []
-            # for entry in d.entries:
-            #     entries.append(entry.title)
-            # print(entries)
-            # print(d.status)
             await asyncio.sleep(60)
-            self.value += 1
 
 runner = BackgroundRunner()
 
@@ -81,7 +88,8 @@ runner = BackgroundRunner()
 # run_main function checks if each source rss feed has updated
 @app.on_event("startup")
 async def startup_event():
-    runner.init_sources()
+    sources = await list_sources()
+    runner.set_sources(sources)
     asyncio.create_task(runner.run_main())
 
 
@@ -99,6 +107,20 @@ class PyObjectId(ObjectId):
     @classmethod
     def __modify_schema__(cls, field_schema):
         field_schema.update(type="string")
+
+class SourceModel(BaseModel):
+    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    name: str = Field(...)
+    url: HttpUrl
+
+    class Config:
+        json_encoders = {ObjectId: str}
+        schema_extra = {
+            "example": {
+                "name": "Coin Telegraph",
+                "url": "https://cointelegraph.com/rss"
+            }
+        }
 
 
 class StudentModel(BaseModel):
@@ -155,6 +177,18 @@ class UpdateStudentModel(BaseModel):
                 "gpa": "3.0",
             }
         }
+
+@app.post("/sources", response_description="Add new source", response_model=SourceModel)
+async def create_source(source: SourceModel = Body(...)):
+    source = jsonable_encoder(source)
+    new_source = await db["sources"].insert_one(source)
+    created_source = await db["source"].find_one({"_id": new_source.inserted_id})
+    return JSONResponse(status_code=status.HTTP_201_CREATED, content=created_source)
+
+@app.get("/sources", response_description="List all sources", response_model=List[SourceModel])
+async def list_sources():
+    sources = await db["sources"].find().to_list(100)
+    return sources
 
 
 @app.post("/", response_description="Add new student", response_model=StudentModel)
