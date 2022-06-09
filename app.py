@@ -98,7 +98,10 @@ async def startup_event():
     runner.set_sources(sources)
     asyncio.create_task(runner.run_main())
 
-
+@app.get("/news", response_description="Get all news")
+async def list_news():
+    news = runner.entries
+    return news
 
 @app.post("/sources", response_description="Add new source", response_model=mymodels.SourceModel)
 async def add_source(source: mymodels.SourceModel = Body(...)):
@@ -116,12 +119,14 @@ async def list_sources():
     sources = await db["sources"].find().to_list(100)
     return sources
 
+
 @app.get("/sources/{id}", response_description="Get a single source", response_model=mymodels.SourceModel)
 async def show_source(id: str):
     if (source := await db["sources"].find_one({"_id": id})) is not None:
         return source
     
     raise HTTPException(status_code=404, detail=f"Source {id} not found")
+
 
 @app.put("/sources/{id}", response_description="Update a source", response_model=mymodels.SourceModel)
 async def update_souce(id: str, source: mymodels.UpdateSourceModel = Body(...)):
@@ -142,6 +147,7 @@ async def update_souce(id: str, source: mymodels.UpdateSourceModel = Body(...)):
 
     raise HTTPException(status_code=404, detail=f"source {id} not found")
 
+
 @app.delete("/sources/{id}", response_description="Delete a source")
 async def delete_source(id: str):
     delete_result = await db["source"].delete_one({"_id": id})
@@ -151,14 +157,14 @@ async def delete_source(id: str):
 
     raise HTTPException(status_code=404, detail=f"Source {id} not found")
 
-@app.delete("/{id}", response_description="Delete a student")
-async def delete_student(id: str):
-    delete_result = await db["students"].delete_one({"_id": id})
+# @app.delete("/{id}", response_description="Delete a student")
+# async def delete_student(id: str):
+#     delete_result = await db["students"].delete_one({"_id": id})
 
-    if delete_result.deleted_count == 1:
-        return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
+#     if delete_result.deleted_count == 1:
+#         return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
 
-    raise HTTPException(status_code=404, detail=f"Student {id} not found")
+#     raise HTTPException(status_code=404, detail=f"Student {id} not found")
 
 # @app.put("/{id}", response_description="Update a student", response_model=StudentModel)
 # async def update_student(id: str, student: UpdateStudentModel = Body(...)):
