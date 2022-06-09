@@ -2,7 +2,6 @@ import os
 from fastapi import FastAPI, Body, HTTPException, status
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
-from pydantic import BaseModel, Field, EmailStr, HttpUrl
 from bson import ObjectId
 from typing import Optional, List
 import motor.motor_asyncio
@@ -11,6 +10,7 @@ import time
 import asyncio
 import feedparser
 import pandas as pd
+import mymodels
 
 feedparser.USER_AGENT = 'Mozilla/5.0`'
 
@@ -18,14 +18,6 @@ app = FastAPI()
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
 db = client.feed_reader
 
-sources = {
-    'https://decrypt.co/feed': '',
-    'https://blockworks.co/feed/': '',
-    'https://cryptopotato.com/feed': '',
-    'https://cryptobriefing.com/feed/': '',
-    'https://dailyhodl.com/feed/': '',
-    'https://cointelegraph.com/rss': ''
-}
 
 class BackgroundRunner:
     def __init__(self):
@@ -107,111 +99,9 @@ async def startup_event():
     asyncio.create_task(runner.run_main())
 
 
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
 
-    @classmethod
-    def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid objectid")
-        return ObjectId(v)
-
-    @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(type="string")
-
-class SourceModel(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    name: str = Field(...)
-    url: HttpUrl
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "name": "Coin Telegraph",
-                "url": "https://cointelegraph.com/rss"
-            }
-        }
-
-class UpdateSourceModel(BaseModel):
-    name: Optional[str]
-    url: Optional[HttpUrl]
-
-    class Config:
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "name": "Coin Telegraph",
-                "url": "https://cointelegraph.com/rss"
-            }
-        }
-
-# class PatternModel(BaseModel):
-
-class StudentModel(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    name: str = Field(...)
-    email: EmailStr = Field(...)
-    course: str = Field(...)
-    gpa: float = Field(..., le=4.0)
-
-    class Config:
-        allow_population_by_field_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "name": "Jane Doe",
-                "email": "jdoe@example.com",
-                "course": "Experiments, Science, and Fashion in Nanophotonics",
-                "gpa": "3.0",
-            }
-        }
-
-class EntryModel(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    title: str = Field(...)
-    link: str = Field(...)
-    published: str = Field(...)
-    tags: str = Field(...)
-    source: str = Field(...)
-
-    class Config:
-        allow_population_by_field_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "title": "News",
-                "link": "news.com/story"
-            }
-        }
-
-
-
-class UpdateStudentModel(BaseModel):
-    name: Optional[str]
-    email: Optional[EmailStr]
-    course: Optional[str]
-    gpa: Optional[float]
-
-    class Config:
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
-        schema_extra = {
-            "example": {
-                "name": "Jane Doe",
-                "email": "jdoe@example.com",
-                "course": "Experiments, Science, and Fashion in Nanophotonics",
-                "gpa": "3.0",
-            }
-        }
-
-@app.post("/sources", response_description="Add new source", response_model=SourceModel)
-async def add_source(source: SourceModel = Body(...)):
+@app.post("/sources", response_description="Add new source", response_model=mymodels.SourceModel)
+async def add_source(source: mymodels.SourceModel = Body(...)):
     source = jsonable_encoder(source)
     feed = feedparser.parse(source["url"])
     if feed.version[0:3] == 'rss':
@@ -221,20 +111,20 @@ async def add_source(source: SourceModel = Body(...)):
     raise HTTPException(status_code=400, detail=f"Source is not valid rss feed")
     
 
-@app.get("/sources", response_description="List all sources", response_model=List[SourceModel])
+@app.get("/sources", response_description="List all sources", response_model=List[mymodels.SourceModel])
 async def list_sources():
     sources = await db["sources"].find().to_list(100)
     return sources
 
-@app.get("/sources/{id}", response_description="Get a single source", response_model=SourceModel)
+@app.get("/sources/{id}", response_description="Get a single source", response_model=mymodels.SourceModel)
 async def show_source(id: str):
     if (source := await db["sources"].find_one({"_id": id})) is not None:
         return source
     
     raise HTTPException(status_code=404, detail=f"Source {id} not found")
 
-@app.put("/sources/{id}", response_description="Update a source", response_model=SourceModel)
-async def update_souce(id: str, source: UpdateSourceModel = Body(...)):
+@app.put("/sources/{id}", response_description="Update a source", response_model=mymodels.SourceModel)
+async def update_souce(id: str, source: mymodels.UpdateSourceModel = Body(...)):
     source = {k: v for k, v in source.dict().items() if v is not None}
 
     if len(source) >= 1:
@@ -270,29 +160,29 @@ async def delete_student(id: str):
 
     raise HTTPException(status_code=404, detail=f"Student {id} not found")
 
-@app.put("/{id}", response_description="Update a student", response_model=StudentModel)
-async def update_student(id: str, student: UpdateStudentModel = Body(...)):
-    student = {k: v for k, v in student.dict().items() if v is not None}
+# @app.put("/{id}", response_description="Update a student", response_model=StudentModel)
+# async def update_student(id: str, student: UpdateStudentModel = Body(...)):
+#     student = {k: v for k, v in student.dict().items() if v is not None}
 
-    if len(student) >= 1:
-        update_result = await db["students"].update_one({"_id": id}, {"$set": student})
+#     if len(student) >= 1:
+#         update_result = await db["students"].update_one({"_id": id}, {"$set": student})
 
-        if update_result.modified_count == 1:
-            if (
-                updated_student := await db["students"].find_one({"_id": id})
-            ) is not None:
-                return updated_student
+#         if update_result.modified_count == 1:
+#             if (
+#                 updated_student := await db["students"].find_one({"_id": id})
+#             ) is not None:
+#                 return updated_student
 
-    if (existing_student := await db["students"].find_one({"_id": id})) is not None:
-        return existing_student
+#     if (existing_student := await db["students"].find_one({"_id": id})) is not None:
+#         return existing_student
 
-    raise HTTPException(status_code=404, detail=f"Student {id} not found")
+#     raise HTTPException(status_code=404, detail=f"Student {id} not found")
 
-@app.get(
-    "/{id}", response_description="Get a single student", response_model=StudentModel
-)
-async def show_student(id: str):
-    if (student := await db["students"].find_one({"_id": id})) is not None:
-        return student
+# @app.get(
+#     "/{id}", response_description="Get a single student", response_model=StudentModel
+# )
+# async def show_student(id: str):
+#     if (student := await db["students"].find_one({"_id": id})) is not None:
+#         return student
 
-    raise HTTPException(status_code=404, detail=f"Student {id} not found")
+#     raise HTTPException(status_code=404, detail=f"Student {id} not found")
