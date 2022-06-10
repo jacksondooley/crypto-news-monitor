@@ -3,3 +3,4 @@ __pycache__
 .envrc
 mongo.key
 .venv/
+.test_parsing.py
