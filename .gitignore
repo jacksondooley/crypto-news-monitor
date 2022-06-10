@@ -2,5 +2,5 @@ __pycache__
 .vscode
 .envrc
 mongo.key
-.venv/
-.test_parsing.py
+.venv
+test_parsing.py
