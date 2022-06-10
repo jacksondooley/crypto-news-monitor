@@ -74,20 +74,24 @@ class BackgroundRunner:
             self.check_for_match(entry)
 
     def check_for_match(self, entry):
-        if self.pattern == "":
-            return
+        if self.pattern == '':
+            df = pd.DataFrame(entry, index=[0])
+            print(df)
+
+        entry["match"] = False
+        entry["pattern"] = self.pattern
         soup = BeautifulSoup(entry["summary"], "lxml")
         matches = soup.find_all(string=re.compile(self.pattern))
         if matches:
             self.matches.append(entry)
+            entry["match"] = True
         elif entry['content'] != None:
             content = entry["content"][0].value
             soup = BeautifulSoup(content, "lxml")
             matches = soup.find_all(string=re.compile(self.pattern))
             if matches:
-                print(entry['title'] + ' contains ' + self.pattern)
-            else:
-                print("no match")
+                self.matches.append(entry)
+                entry["match"] = True
         else:
             req = Request(entry["link"], headers={'User-Agent': 'Mozilla/5.0`'})
             page = urlopen(req).read()
@@ -96,18 +100,16 @@ class BackgroundRunner:
                 soup = soup.body.find("div", class_="post-content")
                 matches = soup.find_all(string=re.compile(self.pattern))
                 if matches:
-                    print(entry['title'] + ' contains ' + self.pattern)
-                else:
-                    print("no match")
+                    self.matches.append(entry)
+                    entry["match"] = True
             elif soup.body.find("section", class_="article-content"):
                 soup = soup.body.find("section", class_="article-content")
                 matches = soup.find_all(string=re.compile(self.pattern))
                 if matches:
-                    print(entry['title'] + ' contains ' + self.pattern)
-                else:
-                    print("no match")
-            else:
-                print(entry['title'] + " has no post-content")
+                    self.matches.append(entry)
+                    entry["match"] = True
+        df = pd.DataFrame(entry, index=[0])
+        print(df)
 
     def check_for_matches(self):
         for idx, entry in enumerate(self.entries):
@@ -156,7 +158,7 @@ class BackgroundRunner:
                 if 'modified' in self.sources[source]:
                     d = feedparser.parse(source, modified=self.sources[source]['modified'])
                     if d.status == 200:
-                        print("feed has not updated")
+                        print("feed has updated")
                         self.sources[source]['modified'] = d.updated
                         self.append_entry(d.entries[0], d.feed.title)
                     elif d.status == 304:
