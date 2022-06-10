@@ -3,35 +3,40 @@ from urllib.request import Request, urlopen
 from bs4 import BeautifulSoup
 import re
 import pandas as pd
+import schedule
+import time
+import asyncio
+import re
 
 print('hello worlddd')
 
 entries = []
 
+print(re.__version__)
 
 # 
-d = feedparser.parse('https://decrypt.co/feed')
-# print(d.feed.keys())
-entries.append(d)
+# d = feedparser.parse('https://decrypt.co/feed')
+# # print(d.feed.keys())
+# entries.append(d)
 
-# # has div with class post-content
-d = feedparser.parse('https://blockworks.co/feed/')
-entries.append(d)
+# # # has div with class post-content
+# d = feedparser.parse('https://blockworks.co/feed/')
+# entries.append(d)
 
 
-d = feedparser.parse('https://cryptopotato.com/feed')
-# print(d.entries[0].keys())
-entries.append(d)
+# d = feedparser.parse('https://cryptopotato.com/feed')
+# # print(d.entries[0].keys())
+# entries.append(d)
 
-d = feedparser.parse('https://cryptobriefing.com/feed/')
-entries.append(d)
+# d = feedparser.parse('https://cryptobriefing.com/feed/')
+# entries.append(d)
 
-# section with class article-content but soup strainer section with class recommended-posts
-d = feedparser.parse('https://dailyhodl.com/feed/')
-entries.append(d)
-d = feedparser.parse('https://cointelegraph.com/rss',   request_headers={'Accept-Encoding': 'gzip'})
-entries.append(d)
-# cleansed = []
+# # section with class article-content but soup strainer section with class recommended-posts
+# d = feedparser.parse('https://dailyhodl.com/feed/')
+# entries.append(d)
+# d = feedparser.parse('https://cointelegraph.com/rss',   request_headers={'Accept-Encoding': 'gzip'})
+# entries.append(d)
+# # cleansed = []
 # for entry in d.entries:
 #     new_entry = {}
 #     new_entry["title"] = entry.title

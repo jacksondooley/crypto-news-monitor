@@ -147,15 +147,29 @@ async def list_news():
     news = runner.entries
     return news
 
-@app.get("/news/{pattern}", response_description="Get news that matches pattern")
+@app.get("/matches", response_description="Get all news that matches pattern")
+async def list_matches():
+    news = runner.matches
+    return news
+
+@app.get("/pattern", response_description="Get current pattern")
+async def list_matches():
+    if runner.pattern == "":
+        return "no pattern"
+    else:
+        return runner.pattern
+
+@app.post("/pattern", response_description="Set pattern for news")
 async def list_matching_news(pattern: str):
-    print(pattern)
-    matches = []
-    for entry in runner.entries:
-        if pattern in entry['tags']:
-            matches.append(entry)
+    runner.pattern = pattern
+    runner.set_matches()
         
-    print(matches)
+    print(pattern)
+
+@app.delete("/pattern", response_description="Clears pattern")
+async def clear_pattern():
+    runner.pattern = ""
+    return "pattern cleared"
 
 @app.post("/source", response_description="Add new source", response_model=mymodels.SourceModel)
 async def add_source(source: mymodels.SourceModel = Body(...)):
@@ -210,39 +224,3 @@ async def delete_source(id: str):
         return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
 
     raise HTTPException(status_code=404, detail=f"Source {id} not found")
-
-# @app.delete("/{id}", response_description="Delete a student")
-# async def delete_student(id: str):
-#     delete_result = await db["students"].delete_one({"_id": id})
-
-#     if delete_result.deleted_count == 1:
-#         return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
-
-#     raise HTTPException(status_code=404, detail=f"Student {id} not found")
-
-# @app.put("/{id}", response_description="Update a student", response_model=StudentModel)
-# async def update_student(id: str, student: UpdateStudentModel = Body(...)):
-#     student = {k: v for k, v in student.dict().items() if v is not None}
-
-#     if len(student) >= 1:
-#         update_result = await db["students"].update_one({"_id": id}, {"$set": student})
-
-#         if update_result.modified_count == 1:
-#             if (
-#                 updated_student := await db["students"].find_one({"_id": id})
-#             ) is not None:
-#                 return updated_student
-
-#     if (existing_student := await db["students"].find_one({"_id": id})) is not None:
-#         return existing_student
-
-#     raise HTTPException(status_code=404, detail=f"Student {id} not found")
-
-# @app.get(
-#     "/{id}", response_description="Get a single student", response_model=StudentModel
-# )
-# async def show_student(id: str):
-#     if (student := await db["students"].find_one({"_id": id})) is not None:
-#         return student
-
-#     raise HTTPException(status_code=404, detail=f"Student {id} not found")

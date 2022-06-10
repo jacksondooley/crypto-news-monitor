@@ -21,3 +21,10 @@ toml==0.10.2
 typed-ast==1.4.1
 typing-extensions==3.7.4.3
 uvicorn==0.12.3
+pandas==1.4.2
+feedparser==6.0.10
+regex==2020.11.13
+asyncio==3.4.3
+beautifulsoup4==4.11.1
+lxml==4.9.0
+schedule==1.1.0
