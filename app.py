@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 import motor.motor_asyncio
 import schedule
 import time
+from time import gmtime, strftime
 import asyncio
 import feedparser
 import pandas as pd
@@ -15,7 +16,6 @@ import mymodels
 import re
 from bs4 import BeautifulSoup
 
-feedparser.USER_AGENT = 'Mozilla/5.0`'
 
 app = FastAPI()
 client = motor.motor_asyncio.AsyncIOMotorClient(os.environ["MONGODB_URL"])
@@ -24,11 +24,11 @@ db = client.feed_reader
 
 class BackgroundRunner:
     def __init__(self):
-        self.value = 0
+        self.interrupt = False
         self.sources = {}
         self.entries = []
         self.matches = []
-        self.pattern = "NFT"
+        self.pattern = ""
     
 
     def set_sources(self, sources):
@@ -53,29 +53,78 @@ class BackgroundRunner:
             new_entry["link"] = entry.link
             new_entry["source"] = feed.feed.title
             new_entry["published"] = entry.published
-            new_entry["tags"] = []
             new_entry["summary"] = entry.summary
             new_entry["content"] = entry.content if "content" in entry.keys() else None
-            for tag in entry.tags:
-                new_entry["tags"].append(tag.term.lower()) 
             self.entries.append(new_entry)
 
+    def append_entry(self, entry, source):
+        new_entry = {}
+        new_entry["title"] = entry.title
+        new_entry["link"] = entry.link
+        new_entry["source"] = source.title
+        new_entry["published"] = entry.published
+        new_entry["summary"] = entry.summary
+        new_entry["content"] = entry.content if "content" in entry.keys() else None
+        self.entries.append(new_entry)
 
-    def set_matches(self):
-        for entry in self.entries:
-            soup = BeautifulSoup(entry["summary"], "lxml")
+        if self.pattern == "":
+            df = pd.DataFrame(new_entry)
+            print(df)
+        else: 
+            self.check_for_match(entry)
+
+    def check_for_match(self, entry):
+        if self.pattern == "":
+            return
+        soup = BeautifulSoup(entry["summary"], "lxml")
+        matches = soup.find_all(string=re.compile(self.pattern))
+        if matches:
+            self.matches.append(entry)
+        elif entry['content'] != None:
+            content = entry["content"][0].value
+            soup = BeautifulSoup(content, "lxml")
             matches = soup.find_all(string=re.compile(self.pattern))
             if matches:
-                self.matches.append(entry)
-                continue
-            if entry['content'] != None:
-                content = entry["content"][0].value
-                soup = BeautifulSoup(content, "lxml")
+                print(entry['title'] + ' contains ' + self.pattern)
+            else:
+                print("no match")
+        else:
+            req = Request(entry["link"], headers={'User-Agent': 'Mozilla/5.0`'})
+            page = urlopen(req).read()
+            soup = BeautifulSoup(page, "lxml")
+            if soup.body.find("div", class_="post-content"):
+                soup = soup.body.find("div", class_="post-content")
                 matches = soup.find_all(string=re.compile(self.pattern))
                 if matches:
                     print(entry['title'] + ' contains ' + self.pattern)
                 else:
                     print("no match")
+            elif soup.body.find("section", class_="article-content"):
+                soup = soup.body.find("section", class_="article-content")
+                matches = soup.find_all(string=re.compile(self.pattern))
+                if matches:
+                    print(entry['title'] + ' contains ' + self.pattern)
+                else:
+                    print("no match")
+            else:
+                print(entry['title'] + " has no post-content")
+
+    def check_for_matches(self):
+        for idx, entry in enumerate(self.entries):
+            entry["match"] = False
+            entry["pattern"] = self.pattern
+            soup = BeautifulSoup(entry["summary"], "lxml")
+            matches = soup.find_all(string=re.compile(self.pattern))
+            if matches:
+                self.matches.append(entry)
+                entry["match"] = True
+            elif entry['content'] != None:
+                content = entry["content"][0].value
+                soup = BeautifulSoup(content, "lxml")
+                matches = soup.find_all(string=re.compile(self.pattern))
+                if matches:
+                    self.matches.append(entry)
+                    entry["match"] = True
             else:
                 req = Request(entry["link"], headers={'User-Agent': 'Mozilla/5.0`'})
                 page = urlopen(req).read()
@@ -84,18 +133,16 @@ class BackgroundRunner:
                     soup = soup.body.find("div", class_="post-content")
                     matches = soup.find_all(string=re.compile(self.pattern))
                     if matches:
-                        print(entry['title'] + ' contains ' + self.pattern)
-                    else:
-                        print("no match")
+                        self.matches.append(entry)
+                        entry["match"] = True
                 elif soup.body.find("section", class_="article-content"):
                     soup = soup.body.find("section", class_="article-content")
                     matches = soup.find_all(string=re.compile(self.pattern))
                     if matches:
-                        print(entry['title'] + ' contains ' + self.pattern)
-                    else:
-                        print("no match")
-                else:
-                    print(entry['title'] + " has no post-content")
+                        self.matches.append(entry)
+                        entry["match"] = True
+            df = pd.DataFrame(entry, index=[idx])
+            print(df)
 
 
 
@@ -103,28 +150,37 @@ class BackgroundRunner:
         scan_feeds = True
         df = pd.DataFrame(self.entries)
         print(df)
-        self.set_matches()
         while scan_feeds:
+            print("checking feeds " + strftime("%Y-%m-%d %H:%M:%S", gmtime()))
             for source in self.sources:
                 if 'modified' in self.sources[source]:
                     d = feedparser.parse(source, modified=self.sources[source]['modified'])
                     if d.status == 200:
+                        print("feed has not updated")
                         self.sources[source]['modified'] = d.updated
+                        self.append_entry(d.entries[0], d.feed.title)
+                    elif d.status == 304:
+                        print("feed has not updated")
                     else:
                         print(d.status)
                 elif 'etag' in self.sources[source]:
                     d = feedparser.parse(source, etag=self.sources[source]['etag'])
                     if d.status == 200:
+                        print("feed has updated")
                         self.sources[source]['etag'] = d.etag
+                        self.append_entry(d.entries[0], d.feed.title)
+                    elif d.status == 304:
+                        print("feed has not updated")
                     else:
                         print(d.status)
                 else:
                     d = feedparser.parse(source)
                     if d.entries[0].link == self.sources[source]['last_entry_link']:
-                        print('no change (fake 304)')
+                        print('feed has not updated')
                     else:
                         print('change (fake 200)')
-            await asyncio.sleep(60)
+                        self.append_entry(d.entries[0], d.feed.title)
+            await asyncio.sleep(59)
 
     
 
@@ -147,29 +203,7 @@ async def list_news():
     news = runner.entries
     return news
 
-@app.get("/matches", response_description="Get all news that matches pattern")
-async def list_matches():
-    news = runner.matches
-    return news
 
-@app.get("/pattern", response_description="Get current pattern")
-async def list_matches():
-    if runner.pattern == "":
-        return "no pattern"
-    else:
-        return runner.pattern
-
-@app.post("/pattern", response_description="Set pattern for news")
-async def list_matching_news(pattern: str):
-    runner.pattern = pattern
-    runner.set_matches()
-        
-    print(pattern)
-
-@app.delete("/pattern", response_description="Clears pattern")
-async def clear_pattern():
-    runner.pattern = ""
-    return "pattern cleared"
 
 @app.post("/source", response_description="Add new source", response_model=mymodels.SourceModel)
 async def add_source(source: mymodels.SourceModel = Body(...)):
@@ -224,3 +258,26 @@ async def delete_source(id: str):
         return JSONResponse(status_code=status.HTTP_204_NO_CONTENT)
 
     raise HTTPException(status_code=404, detail=f"Source {id} not found")
+
+@app.get("/pattern", response_description="Get current pattern")
+async def show_pattern():
+    if runner.pattern == "":
+        return "no pattern"
+    else:
+        return runner.pattern
+
+@app.post("/pattern", response_description="Set pattern for news")
+async def set_pattern(pattern: str):
+    runner.pattern = pattern
+    print(pattern)
+
+@app.delete("/pattern", response_description="Clears pattern")
+async def clear_pattern():
+    runner.pattern = ""
+    return "pattern cleared"
+
+@app.get("/matches", response_description="Get all news that matches pattern (Will take ~2 minutes)")
+async def list_matches():
+    runner.check_for_matches()
+    news = runner.matches
+    return news
