@@ -63,7 +63,6 @@ class BackgroundRunner:
 
     def set_matches(self):
         for entry in self.entries:
-            # print(entry[''])
             soup = BeautifulSoup(entry["summary"], "lxml")
             matches = soup.find_all(string=re.compile(self.pattern))
             if matches:
