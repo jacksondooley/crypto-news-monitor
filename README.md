@@ -23,4 +23,5 @@ uvicorn app:app --reload
 ```
 
 Now you can load http://localhost:8000 in your browser
+Checkout http://localhost:8000/docs, FastAPI provides built in docs that shows the functionality of the project.
 
