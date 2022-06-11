@@ -27,6 +27,7 @@ Checkout http://localhost:8000/docs, FastAPI provides built in docs that shows t
 
 
 ## How it works
+ There is two main components to this project, the RSS Feed Scanner to receive the articles from feeds and the Pattern Checker that utilizes a web scraper to check articles for REGEX patterns.
 ### RSS Feed Scanner
     1. Server starts and startup event triggers function, which pulls sources from database and starts feed scanner.
     2. Feeds get initially scanned and have all feed entries streamed to stdout and made available to /news API.
@@ -39,4 +40,4 @@ Checkout http://localhost:8000/docs, FastAPI provides built in docs that shows t
     2. Entries are checked using check_for_matches function after /matches get API
     3. Entries are iterated through and checked individually.
         3a. First, an entry is checked to see if it has content from RSS feed. If it does, it saves a request to it's url and can be checked quickly
-        4a. If it doesn't have content, urllib is used to request the url and then scrape the article's content for matches.
+        3b. If it doesn't have content, urllib is used to request the url and then scrape the article's content for matches.
